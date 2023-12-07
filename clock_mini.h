@@ -8,25 +8,25 @@
 #include <sys/time.h>
 #endif
 
-#define CM_GET_SECONDS_FROM_MILLISECONDS(a) (a) * 1000
-#define CM_GET_SECONDS_FROM_MICROSECONDS(a) (a) * 1000000
-#define CM_GET_SECONDS_FROM_NANOSECONDS(a) (a) * 1000000000
+#define CM_GET_SECONDS_FROM_MILLISECONDS(a) (a) / 1000.0
+#define CM_GET_SECONDS_FROM_MICROSECONDS(a) (a) / 1000000.0
+#define CM_GET_SECONDS_FROM_NANOSECONDS(a) (a) / 1000000000.0
 
-#define CM_GET_MILLISECONDS_FROM_SECONDS(a) (a) / 1000
-#define CM_GET_MICROSECONDS_FROM_SECONDS(a) (a) / 1000000
-#define CM_GET_NANOSECONDS_FROM_SECONDS(a) (a) / 1000000000
+#define CM_GET_MILLISECONDS_FROM_SECONDS(a) (a) * 1000.0
+#define CM_GET_MICROSECONDS_FROM_SECONDS(a) (a) * 1000000.0
+#define CM_GET_NANOSECONDS_FROM_SECONDS(a) (a) * 1000000000.0
 
-#define CM_GET_MILLISECONDS_FROM_MICROSECONDS(a) (a) * 1000
-#define CM_GET_MILLISECONDS_FROM_NANOSECONDS(a) (a) / 1000000
+#define CM_GET_MILLISECONDS_FROM_MICROSECONDS(a) (a) / 1000.0
+#define CM_GET_MILLISECONDS_FROM_NANOSECONDS(a) (a) / 1000000.0
 
-#define CM_GET_MICROSECONDS_FROM_MILLISECONDS(a) (a) * 1000
-#define CM_GET_MICROSECONDS_FROM_NANOSECONDS(a) (a) / 1000
+#define CM_GET_MICROSECONDS_FROM_MILLISECONDS(a) (a) * 1000.0
+#define CM_GET_MICROSECONDS_FROM_NANOSECONDS(a) (a) / 1000.0
 
-#define CM_GET_NANOSECONDS_FROM_MILLISECONDS(a) (a) * 1000
-#define CM_GET_NANOSECONDS_FROM_MICROSECONDS(a) (a) * 1000000
+#define CM_GET_NANOSECONDS_FROM_MILLISECONDS(a) (a) * 1000.0
+#define CM_GET_NANOSECONDS_FROM_MICROSECONDS(a) (a) * 1000000.0
 
 
-static uint64_t cm_get_nanoseconds()
+static double cm_get_nanoseconds()
 {	
 #if defined(_WIN32)
 	FILETIME a;
@@ -46,6 +46,18 @@ static uint64_t cm_get_nanoseconds()
 	//     ^
 	//     https://man7.org/linux/man-pages/man0/sys_time.h.0p.html
 #endif
+}
+static double cm_get_microseconds()
+{
+	return CM_GET_MICROSECONDS_FROM_NANOSECONDS(cm_get_nanoseconds());
+}
+static double cm_get_milliseconds()
+{
+	return CM_GET_MILLISECONDS_FROM_NANOSECONDS(cm_get_nanoseconds());
+}
+static double cm_get_seconds()
+{
+	return CM_GET_SECONDS_FROM_NANOSECONDS(cm_get_nanoseconds());
 }
 
 #endif
