@@ -1,5 +1,7 @@
 #ifndef CLOCK_MINI_H
 
+#define CLOCK_MINI_VERSION 0.1
+
 #include <stdint.h>
 
 #if defined(_WIN32)
