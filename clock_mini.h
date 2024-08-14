@@ -1,8 +1,13 @@
 #ifndef CLOCK_MINI_H
 
-#define CLOCK_MINI_VERSION 0.1
+#define CLOCK_MINI_VERSION 0.1.1
 
 #include <stdint.h>
+#if defined(_WIN32)
+//...
+#else
+#include <stddef.h> //< for NULL
+#endif
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -40,7 +45,7 @@ static double cm_get_nanoseconds()
 	// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
 	return b.QuadPart * 100ull;
 #else //< #elif defined(__linux__)
-	timeval d;
+	struct timeval d;
 	gettimeofday(&d, NULL);
 	return (((unsigned long long)d.tv_sec) * 1000000ull + ((unsigned long long)d.tv_usec)) * 1000ull;
 	//     ^
