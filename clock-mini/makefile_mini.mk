@@ -1,3 +1,5 @@
+MAKEFILE_MINI_VERSION:=0.1.1
+
 # usage..
 # make #< default target makes all not ignored binaries
 # make test #< make all test(s) if any and run them
@@ -123,7 +125,13 @@ endif
 MM_EXECUTABLE_EXTENSION_OR_DOT:=$(if $(MM_EXECUTABLE_EXTENSION),$(MM_EXECUTABLE_EXTENSION),.)
 
 ifndef OS #< linux
-mm_cli_mkdir=mkdir $(1)
+# NOTE: $(1) = non cli (see windows version of mm_cli_mkdir)
+mm_cli_mkdir=mkdir -p $(1)
+# TODO: not tested
+# NOTE: $(1) == non cli (see windows version of mm_cli_rmdir)
+mm_cli_rmdir=rm -d -f $(1)
+# NOTE: ^
+#       not using rmdir because that will error if folder doesn't exist
 
 mm_cli_rm=rm -f $(1)
 
@@ -154,9 +162,13 @@ mm_cli_sed2=sed $(call mm_cli_not_sed,$(1)) $(2)
 #       $(3) == output filename
 mm_cli_sed3=$(call mm_cli_sed2,$(1),$(2)) > $(3)
 else #< windows
-# NOTE: mkdir outputs "The syntax of the command is incorrect." if there is..
-#       .. a trailing /
-mm_cli_mkdir=if not exist $(1) mkdir $(1)
+# NOTE: $(1) == non cli
+# NOTE: mkdir outputs "The syntax of the command is incorrect." if any /..
+#       .. (only \ allowed)
+mm_cli_mkdir=if not exist $(1) mkdir $(subst /,\,$(1))
+# NOTE: $(1) == non cli
+# NOTE: rmdir outputs "Invalid switch - \"<...>\"" if any / (only \ allowed)
+mm_cli_rmdir=if exist $(1) rmdir /S /Q $(subst /,\,$(1))
 
 # NOTE: del outputs "Invalid switch" if any forward / is used"
 mm_cli_rm=if exist $(1) del $(subst /,\,$(1))
@@ -201,11 +213,18 @@ ifndef OS #< linux
 #       $(2) == inputfile (cli)
 #       $(3) == outputfile (cli)
 define mm_cli_hfile_from_file=
-$(eval mm_cli_hfile_from_file_a:=$(shell tr -c a-zA-Z0-9 _ $(1)))
-$(eval mm_cli_hfile_from_file_b:=$(shell tr a-z A-Z $(mm_cli_hfile_from_file_a)))
-echo #ifndef $(mm_hfile_from_file_b)_H`n#define $(mm_cli_hfile_from_file_b)_H`n`n`nchar $(mm_cli_hfile_from_file_a)_h[] = {\" > $(3)
-od -An -v -td1 $(2) | tr -s " " | tr -d "\n" | sed -z -e "s/ /, /g;s/^, //;s/, $ //" >> $(3)
-echo \"`n`n#endif`n\" >> $(3)
+$(strip\
+	$(eval $(0)_a:=$(shell echo -n $(1) | tr -c a-zA-Z0-9 _))\
+	$(eval $(0)_b:=$(shell echo -n $($(0)_a) | tr a-z A-Z))\
+	echo "#ifndef $($(0)_b)_H" > $(3);\
+	echo "#define $($(0)_b)_H" >> $(3);\
+	echo >> $(3); echo >> $(3);\
+	echo -n "char $($(0)_a)_h[] = { " >> $(3);\
+	od -An -v -td1 $(2) | tr -s " " | tr -d "\n" | sed -z -e "s/ /, /g;s/^, //;s/, $$$$//" >> $(3);\
+	echo " };" >> $(3);\
+	echo >> $(3);\
+	echo "#endif" >> $(3)\
+)
 endef
 # NOTE: ^
 #       https://unix.stackexchange.com/a/758531
@@ -215,9 +234,9 @@ else #< windows
 #       $(3) == outputfile (cli)
 define mm_cli_hfile_from_file=
 $(strip\
-	$(eval mm_cli_hfile_from_file_a:=$(shell powershell.exe "\"$(1)\" -Replace \"[^a-zA-Z0-9]\",\"_\""))\
-	$(eval mm_cli_hfile_from_file_b:=$(shell powershell.exe ""\"$(mm_cli_hfile_from_file_a)\".ToUpper()"))\
-	powershell.exe "$$$$a=(Get-Content -Encoding Byte -Raw $(2) | Out-String).Replace(\"`r`n\",\", \").TrimEnd(\", \"); Set-Content -NoNewline \"#ifndef $(mm_cli_hfile_from_file_b)_H`n#define $(mm_cli_hfile_from_file_b)_H`n`n`nchar $(mm_cli_hfile_from_file_a)_h[] = { $$$$a };`n`n#endif`n\"" $(3)\
+	$(eval $(0)_a:=$(shell powershell.exe "\"$(1)\" -Replace \"[^a-zA-Z0-9]\",\"_\""))\
+	$(eval $(0)_b:=$(shell powershell.exe ""\"$($(0)_a)\".ToUpper()"))\
+	powershell.exe "$$$$a=(Get-Content -Encoding Byte -Raw $(2) | Out-String).Replace(\"`r`n\",\", \").TrimEnd(\", \"); Set-Content -NoNewline \"#ifndef $($(0)_b)_H`n#define $($(0)_b)_H`n`n`nchar $($(0)_a)_h[] = { $$$$a };`n`n#endif`n\"" $(3)\
 )
 endef
 endif
@@ -229,13 +248,13 @@ endif
 # NOTE: not the same as $(if $(filter $(1),$(2),,) as mm_equals also..
 #       .. returns 1 if both $(1) and $(2) are both empty
 define mm_equals=
-$(eval mm_equals_a:=$(strip $(1)))
-$(eval mm_equals_b:=$(strip $(2)))
-$(eval mm_equals_bAreBothEmpty:=0)
-$(if $(mm_equals_a),,$(if $(mm_equals_b),,$(eval mm_equals_bAreBothEmpty:=1)))
-$(if $(filter 1,$(mm_equals_bAreBothEmpty)),\
+$(eval $(0)_a:=$(strip $(1)))
+$(eval $(0)_b:=$(strip $(2)))
+$(eval $(0)_bAreBothEmpty:=0)
+$(if $($(0)_a),,$(if $($(0)_b),,$(eval $(0)_bAreBothEmpty:=1)))
+$(if $(filter 1,$($(0)_bAreBothEmpty)),\
 	1,\
-	$(if $(filter $(mm_equals_a),$(mm_equals_b)),1,0)\
+	$(if $(filter $($(0)_a),$($(0)_b)),1,0)\
 )
 endef
 
@@ -252,11 +271,11 @@ endef
 define mm_switch=
 $(if $(filter 1,$(call mm_equals,$(1),$(firstword $(2)))),\
 	$(firstword $(3)),\
-	$(eval mm_switch_a:=$(words $(2)))\
-	$(if $(filter 1,$(mm_switch_a)),,\
-		$(eval mm_switch_b:=$(wordlist 2,$(mm_switch_a),$(2)))\
-		$(eval mm_switch_c:=$(wordlist 2,$(mm_switch_a),$(3)))\
-		$(call mm_switch,$(1),$(mm_switch_b),$(mm_switch_c))\
+	$(eval $(0)_a:=$(words $(2)))\
+	$(if $(filter 1,$($(0)_a)),,\
+		$(eval $(0)_b:=$(wordlist 2,$($(0)_a),$(2)))\
+		$(eval $(0)_c:=$(wordlist 2,$($(0)_a),$(3)))\
+		$(call mm_switch,$(1),$($(0)_b),$($(0)_c))\
 	)\
 )
 endef
@@ -269,13 +288,13 @@ mm_add_or_append_one_element=$(eval $(1)+=$(1).$(words $($(1))))
 # NOTE: like $(filter <..>) but using regular expression pattern
 define mm_filter_using_patterns=
 $(strip\
-	$(eval mm_filter_using_patterns_a:=$(firstword $(2)))\
-	$(eval mm_filter_using_patterns_b:=$(wordlist 2,$(words $(2)),$(2)))\
-	$(eval mm_filter_using_patterns_c:=$(firstword $(1)))\
-	$(eval mm_filter_using_patterns_d:=$(wordlist 2,$(words $(1)),$(1)))\
+	$(eval $(0)_a:=$(firstword $(2)))\
+	$(eval $(0)_b:=$(wordlist 2,$(words $(2)),$(2)))\
+	$(eval $(0)_c:=$(firstword $(1)))\
+	$(eval $(0)_d:=$(wordlist 2,$(words $(1)),$(1)))\
 	$(if $(OS),\
-	$(shell powershell "\"$(mm_filter_using_patterns_a)\"$(patsubst %,$(MM_COMMA)\"%\",$(mm_filter_using_patterns_b)) | Select-String -Pattern \"$(mm_filter_using_patterns_c)\"$(patsubst %,$(MM_COMMA)\"%\",$(mm_filter_using_patterns_d))"),\
-	$(shell (echo "$(mm_filter_using_patterns_a)"$(patsubst %,; echo "%",$(mm_filter_using_patterns_b))) | grep -i -E "$(mm_filter_using_patterns_c)$(addprefix |,$(mm_filter_using_patterns_d))")\
+	$(shell powershell "\"$($(0)_a)\"$(patsubst %,$(MM_COMMA)\"%\",$($(0)_b)) | Select-String -Pattern \"$($(0)_c)\"$(patsubst %,$(MM_COMMA)\"%\",$($(0)_d))"),\
+	$(shell (echo "$($(0)_a)"$(patsubst %,; echo "%",$($(0)_b))) | grep -i -E "$($(0)_c)$(addprefix |,$($(0)_d))")\
 	)\
 )
 endef
@@ -322,16 +341,16 @@ mm_check_if_defined=$(if $(filter undefined,$(origin $(2))),$(error $(2) is not 
 #       $(2) == value pattern
 #       $(3) == values variablename
 define mm_check_if_valid_values=
-$(eval mm_check_if_valid_values_a:=$(filter-out $(2),$($(3))))
-$(if $(mm_check_if_valid_values_a),$(error $(3) contains invalid element(s) $(mm_check_if_valid_values_a) in $(1)),)
+$(eval $(0)_a:=$(filter-out $(2),$($(3))))
+$(if $($(0)_a),$(error $(3) contains invalid element(s) $($(0)_a) in $(1)),)
 endef
 
 # NOTE: $(1) == functionname
 #       $(2) == value pattern
 #       $(3) == value variablename
 define mm_check_if_valid_value=
-$(eval mm_check_if_valid_value_a:=$(filter-out $(2),$($(3))))
-$(if $(mm_check_if_valid_value_a),$(error $(3) contains invalid value $(mm_check_if_valid_value_a) in $(1)),)
+$(eval $(0)_a:=$(filter-out $(2),$($(3))))
+$(if $($(0)_a),$(error $(3) contains invalid value $($(0)_a) in $(1)),)
 endef
 
 #******************************************************************************
@@ -343,6 +362,10 @@ $(shell $(call mm_cli_mkdir,.makefile-mini))
 MM_PROJECTNAME:=$(lastword $(subst /, ,$(abspath .)))
 # NOTE: .makefile-mini/<binarypart>
 MM_BINARYPARTS:=
+# NOTE: .makefile-mini/<binarypathfolderpathpart>$(notdir <binarypart>)
+#       ^
+#       thus $(dir <binarypath>)
+MM_FOLDERPATHPART_PER_BINARYPART:=
 # NOTE: can contain both..
 #       .. .makefile-mini/<ignoredbinary>
 #       .. <notignoredbinary>
@@ -411,20 +434,46 @@ mm_get_binaryfilepath_from_binary=$(if $(filter 1,$(call mm_is_binary_ignored,$(
 #       $(2) == filepath variablename
 # NOTE: assumes $(1) does not start with .makefile-mini/
 define mm_add_binary=
-$(eval mm_add_binary_filepath:=)
+$(eval $(0)_filepath:=)
 $(if $(filter 1,$(call mm_is_binary_ignored,$(1))),\
-	$(eval mm_add_binary_filepath:=.makefile-mini/$(1))\
+	$(eval $(0)_filepath:=.makefile-mini/$(1))\
 	$(eval MM_IGNOREDBINARIES+=$(1)),\
-	$(eval mm_add_binary_filepath:=$(1))\
+	$(eval $(0)_filepath:=$(1))\
 	$(eval MM_NOTIGNOREDBINARIES+=$(1))\
 )
-$(eval MM_FILEPATH_PER_BINARY+=$(mm_add_binary_filepath))
-$(eval $(2):=$(mm_add_binary_filepath))
+$(eval MM_FILEPATH_PER_BINARY+=$($(0)_filepath))
+$(eval $(2):=$($(0)_filepath))
+endef
+
+# NOTE: $(1) == binarypart
+define mm_get_binarypartfolderpathpart_from_binarypart=
+$(strip \
+	$(eval $(0)_a:=$(dir $(1)))\
+	$(if $(filter ./,$($(0)_a)),,\
+		$($(0)_a)\
+	)\
+)
+endef
+
+# NOTE: $(1) == binarypart
+define mm_get_binarypartfolderpath_from_binarypart=
+$(strip \
+	$(eval $(0)_binarypartfolderpathpart:=$(call mm_get_binarypartfolderpathpart_from_binarypart,$(1)))\
+	$(if $($(0)_binarypartfolderpathpart),\
+		.makefile-mini/$($(0)_binarypartfolderpathpart)\
+	,)\
+)
 endef
 
 # NOTE: $(1) == binarypart
 # NOTE: assumes $(1) does not start with .makefile-mini/
-mm_add_binarypart=$(eval MM_BINARYPARTS+=$(1))
+define mm_add_binarypart=
+$(eval MM_BINARYPARTS+=$(1))
+$(eval $(0)_binarypartfolderpathpart:=$(call mm_get_binarypartfolderpathpart_from_binarypart,$(1)))
+$(if $(filter $($(0)_binarypartfolderpathpart),$(MM_FOLDERPATHPART_PER_BINARYPART)),,\
+	$(eval MM_FOLDERPATHPART_PER_BINARYPART+=$($(0)_binarypartfolderpathpart))\
+)
+endef
 
 #******************************************************************************
 #                                   resources
@@ -441,8 +490,8 @@ mm_add_binarypart=$(eval MM_BINARYPARTS+=$(1))
 #       $(3) == RESOURCETYPE plural
 #       $(4) == resources variablename
 define mm_check_resources=
-$(eval mm_check_resources_a:=$(filter-out $(MM_$(3)),$($(4))))
-$(if $(mm_check_resources_a),$(error $(3) contains element(s) that aren't $(2) in $(1)),)
+$(eval $(0)_a:=$(filter-out $(MM_$(3)),$($(4))))
+$(if $($(0)_a),$(error $(3) contains element(s) that aren't $(2) in $(1)),)
 endef
 
 #******************************************************************************
@@ -453,24 +502,24 @@ endef
 #       .. $(2).. returns 1
 #       otherwise.. returns 0
 define mm_is_resource=
-$(eval mm_is_resource_bIsResource:=0)
-$(foreach mm_is_resource_infoAboutResource,$(MM_INFO_PER_$(1)),\
-	$(if $(filter $($(mm_is_resource_infoAboutResource).name),$(2)),\
-		$(eval mm_is_resource_bIsResource:=1)\
+$(eval $(0)_bIsResource:=0)
+$(foreach $(0)_infoAboutResource,$(MM_INFO_PER_$(1)),\
+	$(if $(filter $($($(0)_infoAboutResource).name),$(2)),\
+		$(eval $(0)_bIsResource:=1)\
 	,)\
 )
-$(if $(filter 1,$(mm_is_resource_bIsResource)),1,0)
+$(if $(filter 1,$($(0)_bIsResource)),1,0)
 endef
 
 # NOTE: $(1) == RESOURCETYPE
 #       $(2) == variablename(s)
 #       $(3) == resources
 define mm_get_variables_from_resources=
-$(foreach mm_get_variables_from_resources_resource,$(3),\
-	$(foreach mm_get_variables_from_resources_infoAboutResource,$(MM_INFO_PER_$(1)),\
-		$(if $(filter $($(mm_get_variables_from_resources_infoAboutResource).name),$(mm_get_variables_from_resources_resource)),\
-			$(foreach mm_get_variables_from_resources_a,$(2),\
-				$($(mm_get_variables_from_resources_infoAboutResource).$(mm_get_variables_from_resources_a))\
+$(foreach $(0)_resource,$(3),\
+	$(foreach $(0)_infoAboutResource,$(MM_INFO_PER_$(1)),\
+		$(if $(filter $($($(0)_infoAboutResource).name),$($(0)_resource)),\
+			$(foreach $(0)_a,$(2),\
+				$($($(0)_infoAboutResource).$($(0)_a))\
 			)\
 		,)\
 	)\
@@ -536,12 +585,14 @@ $(eval $(1).name:=)
 $(eval $(1).type:=)
 $(eval $(1).filetypes:=)
 $(eval $(1).spvasm:=)
+$(eval $(1).spv:=)
 $(eval $(1).spvFilepath:=)
 $(eval $(1).spvHFilepath:=)
 endef
 # NOTE: .name == output files are..
 #                .. <.name>.spv
 #                .. <.name>.spv.h -> char <$(1).spv>_spv = { <...> };
+#       .spv == is for mm_get_binarypartfolderpath_from_binarypart
 
 MM_INFO_PER_SHADER:=
 
@@ -580,39 +631,40 @@ $(if $(filter undefined,$(origin MM_SAFETY)),,\
 	$(call mm_check_add_shader_parameters_t,$(0),$(2))\
 )
 $(call mm_add_or_append_one_element,MM_INFO_PER_SHADER)
-$(eval mm_add_shader_infoAboutShader:=$(lastword $(MM_INFO_PER_SHADER)))
-$(call mm_info_about_shader_t,$(mm_add_shader_infoAboutShader))
-$(eval $(mm_add_shader_infoAboutShader).name:=$(1))
-$(eval $(mm_add_shader_infoAboutShader).type:=$($(2).type))
-$(eval $(mm_add_shader_infoAboutShader).filetypes:=$($(2).filetypes))
-$(eval $(mm_add_shader_infoAboutShader).spvasm:=$(patsubst %.glsl,%.spvasm,$($(2).glsl)))
-$(eval mm_add_shader_bIsSpvasmFromGlsl:=0)
-$(foreach mm_add_shader_infoAboutSpvasmFromGlsl,$(MM_INFO_PER_SPVASM_FROM_GLSL),\
-	$(if $(filter $($(mm_add_shader_infoAboutSpvasmFromGlsl).spvasm),$($(2).spvasm)),\
-		$(if $(filter $($(mm_add_shader_infoAboutSpvasmFromGlsl).type),$($(2).type)),,\
+$(eval $(0)_infoAboutShader:=$(lastword $(MM_INFO_PER_SHADER)))
+$(call mm_info_about_shader_t,$($(0)_infoAboutShader))
+$(eval $($(0)_infoAboutShader).name:=$(1))
+$(eval $($(0)_infoAboutShader).type:=$($(2).type))
+$(eval $($(0)_infoAboutShader).filetypes:=$($(2).filetypes))
+$(eval $($(0)_infoAboutShader).spvasm:=$(patsubst %.glsl,%.spvasm,$($(2).glsl)))
+$(eval $($(0)_infoAboutShader).spv:=$($(1).spv))
+$(eval $(0)_bIsSpvasmFromGlsl:=0)
+$(foreach $(0)_infoAboutSpvasmFromGlsl,$(MM_INFO_PER_SPVASM_FROM_GLSL),\
+	$(if $(filter $($($(0)_infoAboutSpvasmFromGlsl).spvasm),$($(2).spvasm)),\
+		$(if $(filter $($($(0)_infoAboutSpvasmFromGlsl).type),$($(2).type)),,\
 			$(error $($(2).spvasm) required more than once but with different type value in $(0))\
 		)\
-		$(if $(filter 0,$(call mm_equals,$($(mm_add_vertexshader_infoAboutSpvasmFromGlsl).glslangValidator).$($(2).glslangValidator)))\
+		$(if $(filter 0,$(call mm_equals,$($($(0)_infoAboutSpvasmFromGlsl).glslangValidator).$($(2).glslangValidator)))\
 			$(error $($(2).spvasm) required more than once but with different glslangValidator value in $(0))\
 		,)\
-		$(eval mm_add_shader_bIsSpvasmFromGlsl:=1)\
+		$(eval $(0)_bIsSpvasmFromGlsl:=1)\
 	,)\
 )
-$(if $(filter 0,$(mm_add_shader_bIsSpvasmFromGlsl)),\
+$(if $(filter 0,$($(0)_bIsSpvasmFromGlsl)),\
 	$(call mm_add_or_append_one_element,MM_INFO_PER_SPVASM_FROM_GLSL)\
-	$(eval mm_add_shader_infoAboutSpvasmFromGlsl:=$(lastword $(MM_INFO_PER_SPVASM_FROM_GLSL)))\
-	$(eval $(mm_add_shader_infoAboutSpvasmFromGlsl).type:=$($(2).type))\
-	$(eval $(mm_add_shader_infoAboutSpvasmFromGlsl).spvasm:=$($(mm_add_shader_infoAboutShader).spvasm))\
-	$(eval $(mm_add_shader_infoAboutSpvasmFromGlsl).glslangValidator:=$($(2).glslangValidator))\
-	$(call mm_add_binarypart,$($(mm_add_shader_infoAboutShader).spvasm))\
+	$(eval $(0)_infoAboutSpvasmFromGlsl:=$(lastword $(MM_INFO_PER_SPVASM_FROM_GLSL)))\
+	$(eval $($(0)_infoAboutSpvasmFromGlsl).type:=$($(2).type))\
+	$(eval $($(0)_infoAboutSpvasmFromGlsl).spvasm:=$($($(0)_infoAboutShader).spvasm))\
+	$(eval $($(0)_infoAboutSpvasmFromGlsl).glslangValidator:=$($(2).glslangValidator))\
+	$(call mm_add_binarypart,$($($(0)_infoAboutShader).spvasm))\
 ,)
 $(if $(filter EMMShaderfiletype_Shared,$($(2).filetypes)),\
-	$(call mm_add_binary,$(1).spv,$(mm_add_shader_infoAboutShader).spvFilepath),\
+	$(call mm_add_binary,$(1).spv,$($(0)_infoAboutShader).spvFilepath),\
 	$(call mm_add_binarypart,$(1).spv)\
-	$(eval $(mm_add_shader_infoAboutShader).spvFilepath:=.makefile-mini/$(1).spv)\
+	$(eval $($(0)_infoAboutShader).spvFilepath:=.makefile-mini/$(1).spv)\
 )
 $(if $(filter EMMShaderfiletype_Static,$($(2).filetypes)),\
-	$(call mm_add_binary,$(1).spv.h,$(mm_add_shader_infoAboutShader).spvHFilepath)\
+	$(call mm_add_binary,$(1).spv.h,$($(0)_infoAboutShader).spvHFilepath)\
 ,)
 endef
 # TODO: ^
@@ -658,14 +710,14 @@ MM_INFO_PER_O_FROM_CPP:=
 # NOTE: $(1) == functionname
 #       $(2) == lib
 define mm_check_lib=
-$(eval mm_check_lib_invalidLib:=)
-$(foreach mm_check_lib_lib,$($(2)),\
-	$(if $(findstring .,$(mm_check_lib_lib)),\
-		$(eval mm_check_lib_invalidLib+=$(mm_check_lib_lib))\
+$(eval $(0)_invalidLib:=)
+$(foreach $(0)_lib,$($(2)),\
+	$(if $(findstring .,$($(0)_lib)),\
+		$(eval $(0)_invalidLib+=$($(0)_lib))\
 	)\
 )
-$(if $(mm_check_lib_invalidLib),\
-	$(error $(2) contains invalid value(s) $(mm_check_lib_invalidLib) in $(1))\
+$(if $($(0)_invalidLib),\
+	$(error $(2) contains invalid value(s) $($(0)_invalidLib) in $(1))\
 ,)
 endef
 
@@ -680,38 +732,44 @@ endef
 #       $(7) == .gcc/.g++
 #       $(8) == .o
 define mm_add_o_from_c_or_cpp=
-$(foreach mm_add_o_from_c_or_cpp_o,$(8),\
+$(foreach $(0)_o,$(8),\
 	$(if $(OS),\
-		$(eval mm_add_o_from_c_or_cpp_cOrCpp:=$(basename $(mm_add_o_from_c_or_cpp_o))),\
-		$(eval mm_add_o_from_c_or_cpp_cOrCpp:=$(basename $(basename $(mm_add_o_from_c_or_cpp_o))))\
+		$(eval $(0)_cOrCpp:=$(basename $($(0)_o))),\
+		$(eval $(0)_cOrCpp:=$(basename $(basename $($(0)_o))))\
 	)\
-	$(eval mm_add_o_from_c_or_cpp_bIsOFromCOrCpp:=0)\
-	$(foreach mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp,$(MM_INFO_PER_O_FROM_$(2)),\
-		$(if $(filter $($(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).o),$(mm_add_o_from_c_or_cpp_o)),\
-			$(if $(filter 0,$(call mm_equals,$($(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(4)Folders),$(6))),\
-				$(error $(mm_add_o_from_c_or_cpp_o) required more than once but with different $(4)Folders value in $(1))\
-			,)\
-			$(if $(filter 0,$(call mm_equals,$($(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(5)),$(7))),\
-				$(error $(mm_add_o_from_c_or_cpp_o) required more than once but with different $(5) value in $(1))\
-			,)\
-			$(eval mm_add_o_from_c_or_cpp_bIsOFromCOrCpp:=1)\
+	$(eval $(0)_gccOrG++:=$(7))\
+	$(if $(OS),,\
+		$(if $(filter %.shared.o,$($(0)_o)),\
+			$(eval $(0)_gccOrG++ +=-fpic -fvisibility=hidden)\
 		,)\
 	)\
-	$(if $(filter 0,$(mm_add_o_from_c_or_cpp_bIsOFromCOrCpp)),\
+	$(eval $(0)_bIsOFromCOrCpp:=0)\
+	$(foreach $(0)_infoAboutOFromCOrCpp,$(MM_INFO_PER_O_FROM_$(2)),\
+		$(if $(filter $($($(0)_infoAboutOFromCOrCpp).o),$($(0)_o)),\
+			$(if $(filter 0,$(call mm_equals,$($($(0)_infoAboutOFromCOrCpp).$(4)Folders),$(6))),\
+				$(error $($(0)_o) required more than once but with different $(4)Folders value in $(1))\
+			,)\
+			$(if $(filter 0,$(call mm_equals,$($($(0)_infoAboutOFromCOrCpp).$(5)),$($(0)_gccOrG++))),\
+				$(error $($(0)_o) required more than once but with different $(5) value in $(1))\
+			,)\
+			$(eval $(0)_bIsOFromCOrCpp:=1)\
+		,)\
+	)\
+	$(if $(filter 0,$($(0)_bIsOFromCOrCpp)),\
 		$(call mm_add_or_append_one_element,MM_INFO_PER_O_FROM_$(2))\
-		$(eval mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp:=$(lastword $(MM_INFO_PER_O_FROM_$(2))))\
-		$(call mm_info_about_o_from_c_or_cpp_t,$(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp))\
-		$(eval $(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(3):=$(mm_add_o_from_c_or_cpp_cOrCpp))\
-		$(eval $(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(4)Folders:=$(6))\
-		$(eval $(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(5):=$(7))\
-		$(if $(OS),,\
-			$(eval $(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).$(5)+=-fpic -visibility=hidden)\
-		)\
-		$(eval $(mm_add_o_from_c_or_cpp_infoAboutOFromCOrCpp).o:=$(mm_add_o_from_c_or_cpp_o))\
-		$(call mm_add_binarypart,$(mm_add_o_from_c_or_cpp_o))\
+		$(eval $(0)_infoAboutOFromCOrCpp:=$(lastword $(MM_INFO_PER_O_FROM_$(2))))\
+		$(call mm_info_about_o_from_c_or_cpp_t,$($(0)_infoAboutOFromCOrCpp))\
+		$(eval $($(0)_infoAboutOFromCOrCpp).$(3):=$($(0)_cOrCpp))\
+		$(eval $($(0)_infoAboutOFromCOrCpp).$(4)Folders:=$(6))\
+		$(eval $($(0)_infoAboutOFromCOrCpp).$(5):=$($(0)_gccOrG++))\
+		$(eval $($(0)_infoAboutOFromCOrCpp).o:=$($(0)_o))\
+		$(call mm_add_binarypart,$($(0)_o))\
 	,)\
 )
 endef
+# NOTE: ^
+#       though not possible that "-fpic -fvisibilty=hidden" for .shared.o is..
+#       .. ever an issue, adding it here before checking for sanity
 
 # NOTE: $(1) == functionname
 #       $(2) == .hFolders
@@ -738,7 +796,9 @@ EMMLibraryfiletype_All:=$(EMMLibraryfiletype)
 define mm_add_library_parameters_t=
 $(eval $(1).filetypes:=)
 $(eval $(1).c:=)
+$(eval $(1).localC:=)
 $(eval $(1).cpp:=)
+$(eval $(1).localCpp:=)
 $(eval $(1).h:=)
 $(eval $(1).hpp:=)
 $(eval $(1).hFolders:=)
@@ -756,6 +816,10 @@ endef
 # NOTE: ^
 #       .filetypes == empty (i.e. .h only) or one or multiple of..
 #                     .. EMMLibraryfiletype
+#       .localC == .c file(s) for which objdump would report l on the..
+#                  .. corresponding .o for every extern symbol
+#       .localCpp == .cpp file(s) for which objdump would report l on the..
+#                    .. corresponding .o for every extern symbol
 #       .hFolders == folders only for c, equivalent to -I for gcc
 #       .hppFolders == folders only for c++, equivalent to -I for g++
 #       .hAndHppFolders == folders for both c and c++
@@ -769,6 +833,13 @@ endef
 # NOTE: header only library (empty .filetypes) is such that external project..
 #       .. address (<projectname>:<libraryname>) to header only library is..
 #       .. possible
+# NOTE: ^
+#       current limitation of .local<C/Cpp> is that static variables and..
+#       .. functions can only occur once across all local files because..
+#       .. every local .o is merged into one .o
+# TODO: ^
+#       option would be to mangle static symbols per file, but don't know..
+#       .. how to do that using windows+mingw/linux a.t.m.
 
 # NOTE: $(1) == variablename
 define mm_info_about_library_t=
@@ -777,6 +848,7 @@ $(eval $(1).filetypes:=)
 $(eval $(1).o:=)
 $(eval $(1).staticO:=)
 $(eval $(1).sharedO:=)
+$(eval $(1).localStaticO:=)
 $(eval $(1).h:=)
 $(eval $(1).hpp:=)
 $(eval $(1).lib:=)
@@ -797,12 +869,15 @@ $(eval $(1).binaryfilepathPerOtherStaticlibrary:=)
 $(eval $(1).binaryfilepathPerOtherSharedlibrary:=)
 endef
 # NOTE: ^
+#       .o == if windows.. .o from .c
+#             if linux.. <.staticO> <.sharedO>
 #       .staticO == if windows.. <.o>
 #                    if linux.. compiled w.o. -fpic -fvisibility=hidden
 #       .sharedO == if windows.. <.o>
 #                    if linux.. == compiled w. -fpic -fvisibility=hidden
-#       .o == if windows.. .o from .c
-#             if linux.. <.staticO> <.sharedO>
+#       .localStaticO == .o, .staticO and .sharedO already include every..
+#                        .. local static .o, .localStaticO contains only..
+#                        .. those .o file(s) if any in .staticO that are local
 #       .cc == gcc/g++
 #       .windows.<lib/dll>filepath == filepath to <.lib/.dll> binary
 #       .linux.<a/so>filepath == filepath to <.a/.so> binary
@@ -823,10 +898,10 @@ define mm_check_libraries_and_staticlibraries_and_sharedlibraries=
 $(call mm_check_libraries,$(1),$(2).libraries)
 $(call mm_check_libraries,$(1).$(2).staticlibraries)
 $(call mm_check_libraries,$(1).$(2).sharedlibraries)
-$(eval mm_check_libraries_and_staticlibraries_and_sharedlibraries_a:=$(filter $($(2).staticlibraries),$($(2).libraries)))
-$(if $(mm_check_libraries_and_staticlibraries_and_sharedlibraries_a),$(error $(mm_check_libraries_and_staticlibraries_and_sharedlibraries_a) specified both in $(2).libraries and $(2).staticlibraries) in $(1),)
-$(eval mm_check_libraries_and_staticlibraries_and_sharedlibraries_b:=$(filter $($(2).sharedlibraries),$($(2).libraries)))
-$(if $(mm_check_libraries_and_staticlibraries_and_sharedlibraries_b),$(error $(mm_check_libraries_and_staticlibraries_and_sharedlibraries_b) specified both in $(2).libraries and $(2).sharedlibaries) in $(1),)
+$(eval $(0)_a:=$(filter $($(2).staticlibraries),$($(2).libraries)))
+$(if $($(0)_a),$(error $($(0)_a) specified both in $(2).libraries and $(2).staticlibraries) in $(1),)
+$(eval $(0)_b:=$(filter $($(2).sharedlibraries),$($(2).libraries)))
+$(if $($(0)_b),$(error $($(0)_b) specified both in $(2).libraries and $(2).sharedlibaries) in $(1),)
 endef
 
 # NOTE: $(1) == functionname
@@ -834,7 +909,9 @@ endef
 define mm_check_add_library_parameters_t=
 $(call mm_check_if_defined,$(1),$(2).filetypes)
 $(call mm_check_if_defined,$(1),$(2).c)
+$(call mm_check_if_defined,$(1),$(2).localC)
 $(call mm_check_if_defined,$(1),$(2).cpp)
+$(call mm_check_if_defined,$(1),$(2).localCpp)
 $(call mm_check_if_defined,$(1),$(2).h)
 $(call mm_check_if_defined,$(1),$(2).hpp)
 $(call mm_check_if_defined,$(1),$(2).hFolders)
@@ -849,7 +926,7 @@ $(call mm_check_if_defined,$(1),$(2).libraries)
 $(call mm_check_if_defined,$(1),$(2).staticlibraries)
 $(call mm_check_if_defined,$(1),$(2).sharedlibraries)
 
-$(if $($(2).filetypes),
+$(if $($(2).filetypes),\
 	$(call mm_check_if_valid_values,$(1),$(EMMLibraryfiletype_All),$(2).filetypes)\
 	$(if $($(2).c) $($(2).cpp),,$(error if $(2).filetypes is not empty.. $(2).c and $(2).cpp may not both be empty in $(1)))\
 	$(call mm_check_if_valid_values,$(1),%.c,$(2).c)\
@@ -890,56 +967,73 @@ $(if $(filter undefined,$(origin MM_SAFETY)),,\
 	$(call mm_check_add_library_parameters_t,$(0),$(2))\
 )
 $(eval MM_INFO_PER_LIBRARY+=MM_INFO_PER_LIBRARY.$(words $(MM_INFO_PER_LIBRARY)))
-$(eval mm_add_library_infoAboutLibrary:=$(lastword $(MM_INFO_PER_LIBRARY)))
-$(call mm_info_about_library_t,$(mm_add_library_infoAboutLibrary))
-$(eval $(mm_add_library_infoAboutLibrary).name:=$(1))
-$(eval $(mm_add_library_infoAboutLibrary).filetypes:=$($(2).filetypes))
-$(eval mm_add_library_oFromC:=)
-$(eval mm_add_library_oFromCpp:=)
+$(eval $(0)_infoAboutLibrary:=$(lastword $(MM_INFO_PER_LIBRARY)))
+$(call mm_info_about_library_t,$($(0)_infoAboutLibrary))
+$(eval $($(0)_infoAboutLibrary).name:=$(1))
+$(eval $($(0)_infoAboutLibrary).filetypes:=$($(2).filetypes))
+$(eval $(0)_oFromC:=)
+$(eval $(0)_oFromLocalC:=)
+$(eval $(0)_oFromCpp:=)
+$(eval $(0)_oFromLocalCpp:=)
 $(if $(OS),\
-	$(eval mm_add_library_oFromC:=$(addsuffix .o,$($(2).c)))\
-	$(eval mm_add_library_oFromCpp:=$(addsuffix .o,$($(2).cpp)))\
-	$(eval $(mm_add_library_infoAboutLibrary).o:=$(mm_add_library_oFromC) $(mm_add_library_oFromCpp))\
-	$(eval $(mm_add_library_infoAboutLibrary).staticO:=$($(mm_add_library_infoAboutLibrary).o))\
-	$(eval $(mm_add_library_infoAboutLibrary).sharedO:=$($(mm_add_library_infoAboutLibrary).o)),\
-	$(if $(filter EMMLibraryfiletype_Static,$($(mm_add_library_infoAboutLibrary).filetypes)),\
-		$(eval mm_add_library_staticOFromC:=$(addsuffix .static.o,$($(2).c)))\
-		$(eval mm_add_library_staticOFromCpp:=$(addsuffix .static.o,$($(2).cpp)))\
-		$(eval $(mm_add_library_infoAboutLibrary).staticO:=$(mm_add_library_staticOFromC) $(mm_add_library_staticOFromCpp))\
-		$(eval $(mm_add_library_infoAboutLibrary).o+=$($(mm_add_library_infoAboutLibrary).staticO))\
-		$(eval mm_add_library_oFromC+=$(mm_add_library_staticOFromC))\
-		$(eval mm_add_library_oFromCpp+=$(mm_add_library_staticOFromCpp))\
+	$(eval $(0)_oFromC:=$(addsuffix .o,$($(2).c)))\
+	$(eval $(0)_oFromLocalC:=$(addsuffix .o,$($(2).localC)))\
+	$(eval $(0)_oFromCpp:=$(addsuffix .o,$($(2).cpp)))\
+	$(eval $(0)_oFromLocalCpp:=$(addsuffix .o,$($(2).localCpp)))\
+	$(eval $($(0)_infoAboutLibrary).o:=$($(0)_oFromC) $($(0)_oFromLocalC) $($(0)_oFromCpp) $($(0)_oFromLocalCpp))\
+	$(eval $($(0)_infoAboutLibrary).staticO:=$($($(0)_infoAboutLibrary).o))\
+	$(eval $($(0)_infoAboutLibrary).sharedO:=$($($(0)_infoAboutLibrary).o)),\
+	$(if $(filter EMMLibraryfiletype_Static,$($($(0)_infoAboutLibrary).filetypes)),\
+		$(eval $(0)_staticOFromC:=$(addsuffix .static.o,$($(2).c)))\
+		$(eval $(0)_staticOFromLocalC:=$(addsuffix .static.o,$($(2).localC)))\
+		$(eval $(0)_staticOFromCpp:=$(addsuffix .static.o,$($(2).cpp)))\
+		$(eval $(0)_staticOFromLocalCpp:=$(addsuffix .static.o,$($(2).localCpp)))\
+		$(eval $($(0)_infoAboutLibrary).staticO:=$($(0)_staticOFromC) $($(0)_staticOFromLocalC) $($(0)_staticOFromCpp) $($(0)_staticOFromLocalCpp))\
+		$(eval $($(0)_infoAboutLibrary).o+=$($($(0)_infoAboutLibrary).staticO))\
+		$(eval $(0)_oFromC+=$($(0)_staticOFromC))\
+		$(eval $(0)_oFromLocalC+=$($(0)_staticOFromLocalC))\
+		$(eval $(0)_oFromCpp+=$($(0)_staticOFromCpp))\
+		$(eval $(0)_oFromLocalCpp+=$($(0)_staticOFromLocalCpp))\
 	,)\
-	$(if $(filter EMMLibraryfiletype_Shared,$($(mm_add_library_infoAboutLibrary).filetypes)),\
-		$(eval mm_add_library_sharedOFromC:=$(addsuffix .shared.o,$($(2).c)))\
-		$(eval mm_add_library_sharedOFromCpp:=$(addsuffix .shared.o,$($(2).cpp)))\
-		$(eval $(mm_add_library_infoAboutLibrary).sharedO:=$(mm_add_library_sharedOFromC) $(mm_add_library_sharedOFromCpp))\
-		$(eval $(mm_add_library_infoAboutLibrary).o+=$($(mm_add_library_infoAboutLibrary).sharedO))\
-		$(eval mm_add_library_oFromC+=$(mm_add_library_sharedOFromC))\
-		$(eval mm_add_library_oFromCpp+=$(mm_add_library_sharedOFromCpp))\
+	$(if $(filter EMMLibraryfiletype_Shared,$($($(0)_infoAboutLibrary).filetypes)),\
+		$(eval $(0)_sharedOFromC:=$(addsuffix .shared.o,$($(2).c)))\
+		$(eval $(0)_sharedOFromLocalC:=$(addsuffix .shared.o,$($(2).localC)))\
+		$(eval $(0)_sharedOFromCpp:=$(addsuffix .shared.o,$($(2).cpp)))\
+		$(eval $(0)_sharedOFromLocalCpp:=$(addsuffix .shared.o,$($(2).localCpp)))\
+		$(eval $($(0)_infoAboutLibrary).sharedO:=$($(0)_sharedOFromC) $($(0)_sharedOFromLocalC) $($(0)_sharedOFromCpp) $($(0)_sharedOFromLocalCpp))\
+		$(eval $($(0)_infoAboutLibrary).o+=$($($(0)_infoAboutLibrary).sharedO))\
+		$(eval $(0)_oFromC+=$($(0)_sharedOFromC))\
+		$(eval $(0)_oFromLocalC+=$($(0)_sharedOFromLocalC))\
+		$(eval $(0)_oFromCpp+=$($(0)_sharedOFromCpp))\
+		$(eval $(0)_oFromLocalCpp+=$($(0)_sharedOFromLocalCpp))\
 	,)\
 )
-$(eval $(mm_add_library_infoAboutLibrary).h:=$($(2).h))
-$(eval $(mm_add_library_infoAboutLibrary).hpp:=$($(2).hpp))
-$(eval $(mm_add_library_infoAboutLibrary).cc:=$(if $($(2).cpp),g++,gcc))
-$(eval $(mm_add_library_infoAboutLibrary).otherLibraries:=$(filter $($(2).libraries),$(MM_LIBRARIES)))
-$(eval $(mm_add_library_infoAboutLibrary).otherStaticlibraries:=$(filter $($(2).staticlibraries),$(MM_STATICLIBRARIES)))
-$(eval $(mm_add_library_infoAboutLibrary).otherSharedlibraries:=$(filter $($(2).sharedlibraries),$(MM_SHAREDLIBRARIES)))
-$(eval $(mm_add_library_infoAboutLibrary).hAndHppFilepathPerOtherLibrary:=$(call mm_get_filepath_per_h_and_hpp_from_libraries,$($(mm_add_library_infoAboutLibrary).otherLibraries)))
-$(eval $(mm_add_library_infoAboutLibrary).binaryfilepathPerOtherStaticlibrary:=$(call mm_get_filepath_per_binary_from_staticlibraries,$($(mm_add_library_infoAboutLibrary).otherStaticlibraries) $($(mm_add_library_infoAboutLibrary).otherLibraries)))
-$(eval $(mm_add_library_infoAboutLibrary).binaryfilepathPerOtherSharedlibrary:=$(call mm_get_filepath_per_binary_from_sharedlibraries,$($(mm_add_library_infoAboutLibrary).otherSharedlibraries) $($(mm_add_library_infoAboutLibrary).otherLibraries)))
-$(eval mm_add_library_a:=$(sort $(notdir,$($(mm_add_library_infoAboutLibrary).hAndHppFilepathPerOtherLibrary))))
-$(if $(mm_add_library_oFromC),\
-	$(call mm_add_o_from_c,$(0),$(mm_add_library_a) $($(2).hAndHppFolders) $($(2).hFolders),$($(2).cGcc),$(mm_add_library_oFromC))\
+$(eval $($(0)_infoAboutLibrary).localStaticO:=$($(0)_staticOFromLocalC) $($(0)_staticOFromLocalCpp))
+$(eval $($(0)_infoAboutLibrary).h:=$($(2).h))
+$(eval $($(0)_infoAboutLibrary).hpp:=$($(2).hpp))
+$(eval $($(0)_infoAboutLibrary).cc:=$(if $($(2).cpp),g++,gcc))
+$(eval $($(0)_infoAboutLibrary).otherLibraries:=$(filter $($(2).libraries),$(MM_LIBRARIES)))
+$(eval $($(0)_infoAboutLibrary).otherStaticlibraries:=$(filter $($(2).staticlibraries),$(MM_STATICLIBRARIES)))
+$(eval $($(0)_infoAboutLibrary).otherSharedlibraries:=$(filter $($(2).sharedlibraries),$(MM_SHAREDLIBRARIES)))
+$(eval $($(0)_infoAboutLibrary).hAndHppFilepathPerOtherLibrary:=$(call mm_get_filepath_per_h_and_hpp_from_libraries,$($($(0)_infoAboutLibrary).otherLibraries)))
+$(eval $($(0)_infoAboutLibrary).binaryfilepathPerOtherStaticlibrary:=$(call mm_get_filepath_per_binary_from_staticlibraries,$($($(0)_infoAboutLibrary).otherStaticlibraries) $($($(0)_infoAboutLibrary).otherLibraries)))
+$(eval $($(0)_infoAboutLibrary).binaryfilepathPerOtherSharedlibrary:=$(call mm_get_filepath_per_binary_from_sharedlibraries,$($($(0)_infoAboutLibrary).otherSharedlibraries) $($($(0)_infoAboutLibrary).otherLibraries)))
+$(eval $(0)_a:=$(sort $(dir $($($(0)_infoAboutLibrary).hAndHppFilepathPerOtherLibrary))))
+$(if $($(0)_oFromC),\
+	$(call mm_add_o_from_c,$(0),$($(0)_a) $($(2).hAndHppFolders) $($(2).hFolders),$($(2).cGcc),$($(0)_oFromC) $($(0)_oFromLocalC))\
 ,)
-$(if $(mm_add_library_oFromCpp),\
-	$(call mm_add_o_from_cpp,$(0),$(mm_add_library_a) $($(2).hAndHppFolders) $($(2).hppFolders),$($(2).cppG++),$(mm_add_library_oFromCpp))\
+$(if $($(0)_oFromCpp),\
+	$(call mm_add_o_from_cpp,$(0),$($(0)_a) $($(2).hAndHppFolders) $($(2).hppFolders),$($(2).cppG++),$($(0)_oFromCpp) $($(0)_oFromLocalCpp))\
 ,)
 $(if $(filter EMMLibraryfiletype_Static,$($(2).filetypes)),\
-	$(call mm_add_binary,lib$(1)$(MM_STATICLIBRARY_EXTENSION),$(mm_add_library_infoAboutLibrary).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath)\
+	$(if $(strip $($($(0)_infoAboutLibrary).localStaticO)),\
+		$(call mm_add_binarypart,lib$(1)$(MM_STATICLIBRARY_EXTENSION).nm)\
+		$(call mm_add_binarypart,lib$(1)$(MM_STATICLIBRARY_EXTENSION).o)\
+	,)\
+	$(call mm_add_binary,lib$(1)$(MM_STATICLIBRARY_EXTENSION),$($(0)_infoAboutLibrary).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath)\
 ,)
 $(if $(filter EMMLibraryfiletype_Shared,$($(2).filetypes)),\
-	$(call mm_add_binary,lib$(1)$(MM_SHAREDLIBRARY_EXTENSION),$(mm_add_library_infoAboutLibrary).$(MM_OS)$(MM_SHAREDLIBRARY_EXTENSION)filepath)\
+	$(call mm_add_binary,lib$(1)$(MM_SHAREDLIBRARY_EXTENSION),$($(0)_infoAboutLibrary).$(MM_OS)$(MM_SHAREDLIBRARY_EXTENSION)filepath)\
 ,)
 $(eval MM_LIBRARIES+=$(1))
 endef
@@ -948,6 +1042,9 @@ endef
 # TODO: mm_not_add_library and mm_add_library=$(eval $(call mm_not_add_library,<...>))?
 #       ^
 #       to allow for comments in mm_not_add_library?
+# NOTE: ^
+#       for shared library .localC is identical to .c
+#       this is fine as default visibility for .shared.o is hidden?
 
 #********************************* executable *********************************
 
@@ -1045,34 +1142,38 @@ $(if $(filter undefined,$(origin MM_SAFETY)),,\
 	$(call mm_check_add_executable_parameters_t,$(0),$(2))\
 )
 $(eval MM_INFO_PER_EXECUTABLE+=MM_INFO_PER_EXECUTABLE.$(words $(MM_INFO_PER_EXECUTABLE)))
-$(eval mm_add_executable_infoAboutExecutable:=$(lastword $(MM_INFO_PER_EXECUTABLE)))
-$(eval $(mm_add_executable_infoAboutExecutable).name:=$(1))
-$(eval mm_add_executable_oFromC:=$(addsuffix .o,$($(2).c)))
-$(eval mm_add_executable_oFromCpp:=$(addsuffix .o,$($(2).cpp)))
-$(eval $(mm_add_executable_infoAboutExecutable).o:=$(mm_add_executable_oFromC) $(mm_add_executable_oFromCpp))
-$(eval $(mm_add_executable_infoAboutExecutable).libraries:=$(filter $($(2).libraries),$(MM_LIBRARIES)))
-$(eval $(mm_add_executable_infoAboutExecutable).staticlibraries:=$(filter $($(2).staticlibraries),$(MM_STATICLIBARIES)))
-$(eval $(mm_add_executable_infoAboutExecutable).sharedlibraries:=$(filter $($(2).sharedlibraries),$(MM_SHAREDLIBRARIES)))
-$(eval $(mm_add_executable_infoAboutExecutable).hAndHppFilepathPerLibrary:=$(call mm_get_filepath_per_h_and_hpp_from_libraries,$($(mm_add_executable_infoAboutExecutable).libraries)))
-$(eval $(mm_add_executable_infoAboutExecutable).binaryfilepathPerStaticlibrary:=$(call mm_get_filepath_per_binary_from_staticlibraries,$($(mm_add_executable_infoAboutExecutable).staticlibraries) $($(mm_add_executable_infoAboutExecutable).libraries)))
-$(eval $(mm_add_executable_infoAboutExecutable).binaryfilepathPerSharedlibrary:=$(call mm_get_filepath_per_binary_from_sharedlibraries,$($(mm_add_executable_infoAboutExecutable).sharedlibraries) $($(mm_add_executable_infoAboutExecutable).libraries)))
-$(eval mm_add_executable_a:=$(patsubst lib%$(MM_STATICLIBRARY_EXTENSION),%,$(notdir $($(mm_add_executable_infoAboutExecutable).binaryfilepathPerStaticlibrary))))
-$(eval mm_add_executable_b:=$(patsubst lib%$(MM_SHAREDLIBRARY_EXTENSION),%,$(notdir $($(mm_add_executable_infoAboutExecutable).binaryfilepathPerSharedlibrary))))
-$(eval mm_add_executable_c:=$(mm_add_executable_a) $(mm_add_executable_b))
-$(eval $(mm_add_executable_infoAboutExecutable).lib:=$(mm_add_executable_c) $($(2).lib))
-$(eval mm_add_executable_d:=$($(mm_add_executable_infoAboutExecutable).binaryfilepathPerStaticlibrary) $($(mm_add_executable_infoAboutExecutable).binaryfilepathPerSharedlibrary))
-$(eval mm_add_executable_e:=$(sort $(dir $(mm_add_executable_d))))
-$(eval $(mm_add_executable_infoAboutExecutable).libFolders:=$(mm_add_executable_e) $($(2).libFolders))
-$(eval $(mm_add_executable_infoAboutExecutable).cc:=$(if $($(2).cpp),g++,gcc))
-$(eval $(mm_add_executable_infoAboutExecutable).gccOrG++:=$($(2).gccOrG++))
-$(eval mm_add_executable_f:=$(sort $(dir $($(mm_add_executable_infoAboutExecutable).hAndHppFilepathPerLibrary))))
-$(if $(mm_add_executable_oFromC),\
-	$(call mm_add_o_from_c,$(0),$(mm_add_executable_f) $($(2).hAndHppFolders) $($(2).hFolders),$($(2).cGcc),$(mm_add_executable_oFromC))\
+$(eval $(0)_infoAboutExecutable:=$(lastword $(MM_INFO_PER_EXECUTABLE)))
+$(eval $($(0)_infoAboutExecutable).name:=$(1))
+$(if $(OS),\
+	$(eval $(0)_oFromC:=$(addsuffix .o,$($(2).c)))\
+	$(eval $(0)_oFromCpp:=$(addsuffix .o,$($(2).cpp))),\
+	$(eval $(0)_oFromC:=$(addsuffix .static.o,$($(2).c)))\
+	$(eval $(0)_oFromCpp:=$(addsuffix .static.o,$($(2).cpp)))\
+)
+$(eval $($(0)_infoAboutExecutable).o:=$($(0)_oFromC) $($(0)_oFromCpp))
+$(eval $($(0)_infoAboutExecutable).libraries:=$(filter $($(2).libraries),$(MM_LIBRARIES)))
+$(eval $($(0)_infoAboutExecutable).staticlibraries:=$(filter $($(2).staticlibraries),$(MM_STATICLIBARIES)))
+$(eval $($(0)_infoAboutExecutable).sharedlibraries:=$(filter $($(2).sharedlibraries),$(MM_SHAREDLIBRARIES)))
+$(eval $($(0)_infoAboutExecutable).hAndHppFilepathPerLibrary:=$(call mm_get_filepath_per_h_and_hpp_from_libraries,$($($(0)_infoAboutExecutable).libraries)))
+$(eval $($(0)_infoAboutExecutable).binaryfilepathPerStaticlibrary:=$(call mm_get_filepath_per_binary_from_staticlibraries,$($($(0)_infoAboutExecutable).staticlibraries) $($($(0)_infoAboutExecutable).libraries)))
+$(eval $($(0)_infoAboutExecutable).binaryfilepathPerSharedlibrary:=$(call mm_get_filepath_per_binary_from_sharedlibraries,$($($(0)_infoAboutExecutable).sharedlibraries) $($($(0)_infoAboutExecutable).libraries)))
+$(eval $(0)_a:=$(patsubst lib%$(MM_STATICLIBRARY_EXTENSION),%,$(notdir $($($(0)_infoAboutExecutable).binaryfilepathPerStaticlibrary))))
+$(eval $(0)_b:=$(patsubst lib%$(MM_SHAREDLIBRARY_EXTENSION),%,$(notdir $($($(0)_infoAboutExecutable).binaryfilepathPerSharedlibrary))))
+$(eval $(0)_c:=$($(0)_a) $($(0)_b))
+$(eval $($(0)_infoAboutExecutable).lib:=$($(0)_c) $($(2).lib))
+$(eval $(0)_d:=$($($(0)_infoAboutExecutable).binaryfilepathPerStaticlibrary) $($($(0)_infoAboutExecutable).binaryfilepathPerSharedlibrary))
+$(eval $(0)_e:=$(sort $(dir $($(0)_d))))
+$(eval $($(0)_infoAboutExecutable).libFolders:=$($(0)_e) $($(2).libFolders))
+$(eval $($(0)_infoAboutExecutable).cc:=$(if $($(2).cpp),g++,gcc))
+$(eval $($(0)_infoAboutExecutable).gccOrG++:=$($(2).gccOrG++))
+$(eval $(0)_f:=$(sort $(dir $($($(0)_infoAboutExecutable).hAndHppFilepathPerLibrary))))
+$(if $($(0)_oFromC),\
+	$(call mm_add_o_from_c,$(0),$($(0)_f) $($(2).hAndHppFolders) $($(2).hFolders),$($(2).cGcc),$($(0)_oFromC))\
 ,)
-$(if $(mm_add_executable_oFromCpp),\
-	$(call mm_add_o_from_cpp,$(0),$(mm_add_executable_f) $($(2).hAndHppFolders) $($(2).hppFolders),$($(2).cppG++),$(mm_add_executable_oFromCpp))\
+$(if $($(0)_oFromCpp),\
+	$(call mm_add_o_from_cpp,$(0),$($(0)_f) $($(2).hAndHppFolders) $($(2).hppFolders),$($(2).cppG++),$($(0)_oFromCpp))\
 ,)
-$(call mm_add_binary,$(1)$(MM_EXECUTABLE_EXTENSION),$(mm_add_executable_infoAboutExecutable).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath)
+$(call mm_add_binary,$(1)$(MM_EXECUTABLE_EXTENSION),$($(0)_infoAboutExecutable).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath)
 $(if $(OS),,\
 	$(if $(filter EMMAdditionalexecutablefiletypes_Portable,$($(2).additionalfiletypes)),\
 		$(call mm_add_binary,$(1).AppImage,$(2).linux.AppImagefilepath)\
@@ -1142,16 +1243,16 @@ $(if $(filter undefined,$(origin MM_SAFETY)),,\
 	$(call mm_check_add_test_parameters_t,$(0),$(2))\
 )
 $(eval MM_INFO_PER_TEST+=MM_INFO_PER_TEST.$(words $(MM_INFO_PER_TEST)))
-$(eval mm_add_test_infoAboutTest:=$(lastword $(MM_INFO_PER_TEST)))
-$(eval $(mm_add_test_infoAboutTest).name:=$(1))
-$(foreach mm_add_test_executable,$($(2).executables),\
-	$(foreach mm_add_test_infoAboutExecutable,$(MM_INFO_PER_EXECUTABLE),\
-		$(if $(filter $(mm_add_test_executable),$($(mm_add_test_infoAboutExecutable).name)),\
-			$(eval $(mm_add_test_infoAboutTest).filepathPerExecutable+=$($(mm_add_test_infoAboutExecutable).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath))\
+$(eval $(0)_infoAboutTest:=$(lastword $(MM_INFO_PER_TEST)))
+$(eval $($(0)_infoAboutTest).name:=$(1))
+$(foreach $(0)_executable,$($(2).executables),\
+	$(foreach $(0)_infoAboutExecutable,$(MM_INFO_PER_EXECUTABLE),\
+		$(if $(filter $($(0)_executable),$($($(0)_infoAboutExecutable).name)),\
+			$(eval $($(0)_infoAboutTest).filepathPerExecutable+=$($($(0)_infoAboutExecutable).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath))\
 		,)\
 	)\
 )
-$(eval $(mm_add_test_infoAboutTest).scripts:=$($(2).scripts))
+$(eval $($(0)_infoAboutTest).scripts:=$($(2).scripts))
 endef
 
 #******************************************************************************
@@ -1216,9 +1317,9 @@ endef
 
 # NOTE: $(1) == infoAboutSpvasmFromGlsl
 define mm_add_spvasm_from_glsl_target=
-$(eval mm_add_spvasm_from_glsl_target_a:=$(strip $(call mm_switch,$($(1).type),EMMShadertype_Vertex EMMShadertype_Pixel,vert frag)))
-.makefile-mini/$($(1).spvasm):.makefile-mini/%.spvasm:%.glsl
-	glslangValidator $($(1).glslangValidator) --quiet -o $(MM_CLI_DEV_NULL) --spirv-dis -V -S $(mm_add_spvasm_from_glsl_target_a) $$< > $$@
+$(eval $(0)_a:=$(strip $(call mm_switch,$($(1).type),EMMShadertype_Vertex EMMShadertype_Pixel,vert frag)))
+.makefile-mini/$($(1).spvasm):.makefile-mini/%.spvasm:%.glsl | $(call mm_get_binarypartfolderpath_from_binarypart,$($(1).spvasm))
+	glslangValidator $($(1).glslangValidator) --quiet -o $(MM_CLI_DEV_NULL) --spirv-dis -V -S $($(0)_a) $$< > $$@
 endef
 # NOTE: ^
 #       -o $(MM_CLI_DEV_NULL) is to work around glslangValidator always..
@@ -1229,9 +1330,13 @@ endef
 
 # NOTE: $(1) == infoAboutShader
 define mm_add_spv_from_spvasm_target=
-$($(1).spvFilepath): .makefile-mini/$($(1).spvasm)
+$($(1).spvFilepath): .makefile-mini/$($(1).spvasm) $(if $(patsubst .makefile-mini/%,%,$($(1).spvFilepath)),| $(call mm_get_binarypartfolderpath_from_binarypart,$($(1).spv)),)
 	spirv-as -o $$@ $$<
 endef
+# NOTE: ^
+#       if $(1).spvFilepath starts with .makefile-mini/.. this .spv might be..
+#       .. a binarypart (though could also be an ignored binary)
+#       otherwise.. this .spv is a binary
 
 # NOTE: $(1) == infoAboutShader
 define mm_add_spv_h_from_spv_target=
@@ -1249,31 +1354,60 @@ endef
 
 # NOTE: $(1) == infoAboutOFromC
 define mm_add_o_from_c_target=
-$(if $(OS),.makefile-mini/$($(1).o):.makefile-mini/%.o:%,.makefile-mini/$($(1).o):$($(1).c))
+$(if $(OS),.makefile-mini/$($(1).o):.makefile-mini/%.o:%,.makefile-mini/$($(1).o):$($(1).c)) | $(call mm_get_binarypartfolderpath_from_binarypart,$($(1).o))
 	gcc $($(1).gcc) -o $$@ -c $$< $(addprefix -I,$($(1).hFolders))
 endef
 
 # NOTE: $(1) == infoAboutOFromCpp
 define mm_add_o_from_cpp_target=
-$(if $(OS),.makefile-mini/$($(1).o):.makefile-mini/%.o:%,.makefile-mini/$($(1).o):$($(1).cpp))
+$(if $(OS),.makefile-mini/$($(1).o):.makefile-mini/%.o:%,.makefile-mini/$($(1).o):$($(1).cpp)) | $(call mm_get_binarypartfolderpath_from_binarypart,$($(1).o))
 	g++ $($(1).g++) -o $$@ -c $$< $(addprefix -I,$($(1).hppFolders))
 endef
+# NOTE: ^
+#       see mm_add_o_from_c_target
+
+# NOTE: $(1) == infoAboutLibrary
+define mm_add_local_staticlibrary_targets=
+$(eval $(0)_filepathPerLocalStaticO:=$(addprefix .makefile-mini/,$($(1).localStaticO)))
+.makefile-mini/$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath).nm:$($(0)_filepathPerLocalStaticO)
+	nm -j -g --defined-only $$^ > $$@
+
+$(eval $(0)_filepathPerStaticO:=$(addprefix .makefile-mini/,$($(1).staticO)))
+.makefile-mini/$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath).o:.makefile-mini/$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath).nm $($(0)_filepathPerStaticO)
+	ld -r -o $$@ $($(0)_filepathPerStaticO)
+	objcopy --localize-symbols $$< $$@
+
+$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath): .makefile-mini/$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath).o $($(1).hAndHppFilepathPerOtherLibrary)
+	ar rcs $$@ $$<
+endef
+# NOTE: ^
+#       https://stackoverflow.com/a/2980126
+#       https://stackoverflow.com/a/44674115
+#       ^
+#       not using objcopy --local-hidden, but result is the same
 
 # NOTE: $(1) == infoAboutLibrary
 define mm_add_staticlibrary_target=
-$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath): $(addprefix .makefile-mini/,$($(1).staticO)) | $($(1).hAndHppFilepathPerOtherLibrary)
-	ar rcs $$@ $$^
+$(eval $(0)_staticO:=$(addprefix .makefile-mini/,$($(1).staticO)))
+$($(1).$(MM_OS)$(MM_STATICLIBRARY_EXTENSION)filepath): $($(0)_staticO) $($(1).hAndHppFilepathPerOtherLibrary)
+	ar rcs $$@ $($(0)_staticO)
+endef
+
+# NOTE: $(1) == infoAboutLibrary
+define mm_add_staticlibrary_targets=
+$(if $($(1).localStaticO),$(call mm_add_local_staticlibrary_targets,$(1)),$(call mm_add_staticlibrary_target,$(1)))
 endef
 
 # NOTE: $(1) == infoAboutLibrary
 define mm_add_sharedlibrary_target=
-$($(1).$(MM_OS)$(MM_SHAREDLIBRARY_EXTENSION)filepath): $(addprefix .makefile-mini/,$($(1).sharedO)) | $($(1).hAndHppFilepathPerOtherLibrary)
-	$($(1).cc) -shared -o $$@ $$^
+$(eval $(0)_filepathPerSharedO:=$(addprefix .makefile-mini/,$($(1).sharedO)))
+$($(1).$(MM_OS)$(MM_SHAREDLIBRARY_EXTENSION)filepath): $($(0)_filepathPerSharedO) $($(1).hAndHppFilepathPerOtherLibrary)
+	$($(1).cc) -shared -o $$@ $($(0)_filepathPerSharedO)
 endef
 
 # NOTE: $(1) == infoAboutLibrary
 define mm_add_library_targets=
-$(if $(filter EMMLibraryfiletype_Static,$($(1).filetypes)),$(call mm_add_staticlibrary_target,$(1)),)
+$(if $(filter EMMLibraryfiletype_Static,$($(1).filetypes)),$(call mm_add_staticlibrary_targets,$(1)),)
 $(if $(filter EMMLibraryfiletype_Shared,$($(1).filetypes)),$(call mm_add_sharedlibrary_target,$(1)),)	
 endef
 
@@ -1285,8 +1419,9 @@ endif
 
 # NOTE: $(1) == infoAboutExecutable
 define mm_add_executable_targets=
-$($(1).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath): $(addprefix .makefile-mini/,$($(1).o)) | $($(1).hAndHppFilepathPerLibrary) $($(1).binaryfilepathPerStaticlibrary) $($(1).binaryfilepathPerSharedlibrary)
-	$($(1).cc) $($(1).gccOrG++) -o $$@ $$^ $(addprefix -L,$($(1).libFolders)) $(addprefix -l,$($(1).lib))
+$(eval $(0)_filepathPerO:=$(addprefix .makefile-mini/,$($(1).o)))
+$($(1).$(MM_OS)$(MM_EXECUTABLE_EXTENSION_OR_DOT)filepath): $($(0)_filepathPerO) $($(1).hAndHppFilepathPerLibrary) $($(1).binaryfilepathPerStaticlibrary) $($(1).binaryfilepathPerSharedlibrary)
+	$($(1).cc) $($(1).gccOrG++) -o $$@ $($(0)_filepathPerO) $(addprefix -L,$($(1).libFolders)) $(addprefix -l,$($(1).lib))
 endef
 # TODO: ^
 #       .h prerequisites should be order only such that $$^ here still  works
@@ -1300,26 +1435,39 @@ define mm_add_default_target=
 default: $(MM_NOTIGNOREDBINARIES)
 endef
 
+# NOTE: $(1) == folderpath
+define mm_add_folder_target=
+$(1):
+	$(call mm_cli_mkdir,$(1))
+endef
+
+define mm_add_folders_targets=
+$(foreach $(0)_binarypartfolderpathpart,$(MM_FOLDERPATHPART_PER_BINARYPART),$(call mm_add_folder_target,.makefile-mini/$($(0)_binarypartfolderpathpart)))
+endef
+# NOTE: ^
+#       "subst /,\" because mm_cli_mkdir parameter $(1) is non cli
+
 define mm_add_test_target=
 .PHONY: test
 test: $(MM_FILEPATH_PER_BINARY)
-	$(foreach mm_add_test_target_infoAboutTest,$(MM_INFO_PER_TEST),$\
-	$(foreach mm_add_test_target_executablefilepath,$($(mm_add_test_target_infoAboutTest).filepathPerExecutable),$\
-	$(MM_NEWLINE)	$(if $(findstring /,$(mm_add_test_target_executablefilepath)),,.$(MM_FOLDER_SEPARATOR))$(mm_add_test_target_executablefilepath)$\
+	$(foreach $(0)_infoAboutTest,$(MM_INFO_PER_TEST),$\
+	$(foreach $(0)_executablefilepath,$($($(0)_infoAboutTest).filepathPerExecutable),$\
+	$(eval $(0)_a:=$(if $(findstring /,$($(0)_executablefilepath)),,.$(MM_FOLDER_SEPARATOR))$($(0)_executablefilepath))$\
+	$(MM_NEWLINE)	@$(if $(OS),,export LD_LIBRARY_PATH=$$$$LD_LIBRARY_PATH:./:.makefile-mini/; )$($(0)_a);echo $($(0)_a)$\
 	)$\
-	$(foreach mm_add_test_target_script,$($(mm_add_test_target_infoAboutTest).scripts),$\
-	$(MM_NEWLINE)	$(if $(findstring /,$(mm_add_test_target_executablefilepath)),,.$(MM_FOLDER_SEPARATOR))$(mm_add_test_target_script)$(MM_SCRIPT_EXTENSION)"$\
+	$(foreach $(0)_script,$($($(0)_infoAboutTest).scripts),$\
+	$(MM_NEWLINE)	$(if $(findstring /,$($(0)_executablefilepath)),,.$(MM_FOLDER_SEPARATOR))$($(0)_script)$(MM_SCRIPT_EXTENSION)$\
 	)$\
 	)
 endef
 # NOTE: ^
 #       I tried..
-#       cmd /c "start /b $(mm_add_test_target_script).bat"
+#       cmd /c "start /b $($(0)_script).bat"
 #       .. which caused powershell to keep cmd.exe open after make returned..
 #       .. thus having manually call exit,..
 #       .. https://stackoverflow.com/a/41411671
 #       Start-Job -ScriptBlock { Set-Location $using:pwd; Invoke-Expression..
-#       .. .\$args } -ArgumentList "$(mm_add_test_target_script).bat"
+#       .. .\$args } -ArgumentList "$($(0)_script).bat"
 #       .. was the closest to working solution I found, but it broke the..
 #       .. timeout command that I used to test whether scripts where ran in..
 #       .. parallel, https://stackoverflow.com/a/74843981
@@ -1327,6 +1475,15 @@ endef
 #       Hence for now.. executables and scripts are not run in parallel and..
 #       .. .executables and .scripts is only for grouping tests (for..
 #       .. convenience perhaps?)
+# NOTE: ^
+#       make automatically adds environment variables as Makefile variables..
+#       .. (hence $(LD_LIBRARY_PATH) works) and runs each line using a new..
+#       .. shell (separate c stdlib system function call?), hence export..
+#       .. LD_LIBRARY_PATH=<..> on same line as running executable here
+#       currently hidden that makefile-mini does this for clearer output
+# TODO: this solution won't work if a test executable uses any external..
+#       .. sharedlibrary/runs any executable that requires an external..
+#       .. sharedlibrary
 
 define mm_add_releasezip_target=
 $(MM_PROJECTNAME).$(MM_OS).zip: $(MM_RELEASEZIP)
@@ -1363,14 +1520,21 @@ endef
 define mm_add_clean_target=
 .PHONY: clean
 clean:
-	$(foreach mm_add_clean_target_binarypart,$(MM_BINARYPARTS),$(MM_NEWLINE)	$(call mm_cli_rm,.makefile-mini/$(mm_add_clean_target_binarypart)))
-	$(foreach mm_add_clean_target_binaryfilepath,$(MM_FILEPATH_PER_BINARY),$(MM_NEWLINE)	$(call mm_cli_rm,$(mm_add_clean_target_binaryfilepath)))
-	$(foreach mm_add_clean_target_release,$(MM_RELEASE),$(MM_NEWLINE)	$(call mm_cli_rm,$(mm_add_clean_target_release)))
+	$(foreach $(0)_binarypart,$(MM_BINARYPARTS),$(MM_NEWLINE)	$(call mm_cli_rm,.makefile-mini/$($(0)_binarypart)))
+	$(foreach $(0)_binarypartfolderpathpart,$(MM_FOLDERPATHPART_PER_BINARYPART),$(MM_NEWLINE)	$(call mm_cli_rmdir,.makefile-mini/$($(0)_binarypartfolderpathpart)))
+	$(foreach $(0)_binaryfilepath,$(MM_FILEPATH_PER_BINARY),$(MM_NEWLINE)	$(call mm_cli_rm,$($(0)_binaryfilepath)))
+	$(foreach $(0)_release,$(MM_RELEASE),$(MM_NEWLINE)	$(call mm_cli_rm,$($(0)_release)))
 endef
 # NOTE: ^
 #       $(MM_NEWLINE)<tab>$(call <...>)
 #                    ^
 #                    to assure ends up in clean target?
+# NOTE: ^
+#       if windows.. using "/S /Q" in mm_cli_rmdir as order in which..
+#       .. deleting folders can mean that a folder attempted to be deleted..
+#       .. can contain folder(s)
+#       ^
+#       sort cannot "be used instead" as would result in reverse order?
 
 # NOTE: $(1) == <mm_stop_parameters_t>
 define mm_stop=
@@ -1380,28 +1544,30 @@ $(if $(filter undefined,$(origin MM_SAFETY)),,\
 
 $(eval $(call mm_add_default_target))
 
-$(foreach mm_add_makefile_infoAboutSpvasmFromGlsl,$(MM_INFO_PER_SPVASM_FROM_GLSL),$\
-$(eval $(call mm_add_spvasm_from_glsl_target,$(mm_add_makefile_infoAboutSpvasmFromGlsl)))$\
+$(eval $(call mm_add_folders_targets))
+
+$(foreach $(0)_infoAboutSpvasmFromGlsl,$(MM_INFO_PER_SPVASM_FROM_GLSL),$\
+$(eval $(call mm_add_spvasm_from_glsl_target,$($(0)_infoAboutSpvasmFromGlsl)))$\
 )
 
-$(foreach mm_add_makefile_infoAboutShader,$(MM_INFO_PER_SHADER),$\
-$(eval $(call mm_add_shader_target,$(mm_add_makefile_infoAboutShader)))$\
+$(foreach $(0)_infoAboutShader,$(MM_INFO_PER_SHADER),$\
+$(eval $(call mm_add_shader_target,$($(0)_infoAboutShader)))$\
 )
 
-$(foreach mm_add_makefile_infoAboutOFromC,$(MM_INFO_PER_O_FROM_C),$\
-$(eval $(call mm_add_o_from_c_target,$(mm_add_makefile_infoAboutOFromC)))$\
+$(foreach $(0)_infoAboutOFromC,$(MM_INFO_PER_O_FROM_C),$\
+$(eval $(call mm_add_o_from_c_target,$($(0)_infoAboutOFromC)))$\
 )
 
-$(foreach mm_add_makefile_infoAboutOFromCpp,$(MM_INFO_PER_O_FROM_CPP),$\
-$(eval $(call mm_add_o_from_cpp_target,$(mm_add_makefile_infoAboutOFromCpp)))$\
+$(foreach $(0)_infoAboutOFromCpp,$(MM_INFO_PER_O_FROM_CPP),$\
+$(eval $(call mm_add_o_from_cpp_target,$($(0)_infoAboutOFromCpp)))$\
 )
 
-$(foreach mm_add_makefile_infoAboutLibrary,$(MM_INFO_PER_LIBRARY),$\
-$(eval $(call mm_add_library_targets,$(mm_add_makefile_infoAboutLibrary)))$\
+$(foreach $(0)_infoAboutLibrary,$(MM_INFO_PER_LIBRARY),$\
+$(eval $(call mm_add_library_targets,$($(0)_infoAboutLibrary)))$\
 )
 
-$(foreach mm_add_makefile_infoAboutExecutable,$(MM_INFO_PER_EXECUTABLE),$\
-$(eval $(call mm_add_executable_targets,$(mm_add_makefile_infoAboutExecutable)))$\
+$(foreach $(0)_infoAboutExecutable,$(MM_INFO_PER_EXECUTABLE),$\
+$(eval $(call mm_add_executable_targets,$($(0)_infoAboutExecutable)))$\
 )
 
 $(eval $(call mm_add_test_target))
@@ -1455,4 +1621,4 @@ endef
 # NOTE: ^
 #       $(if $(MM_RELEASE*),,$(eval MM_RELEASE:=$(filter-out <..>,$(MM_RELEASE))))
 #       ^
-#       if releasetype specified but no files.. don't make reelase
+#       if releasetype specified but no files.. don't make release
