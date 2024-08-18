@@ -36,7 +36,13 @@ static double cm_get_nanoseconds()
 #if defined(_WIN32)
 	FILETIME a;
 	GetSystemTimeAsFileTime(&a);
-	ULARGE_INTEGER b = { .u.LowPart = a.dwLowDateTime, .u.HighPart = a.dwHighDateTime };
+	//ULARGE_INTEGER b = { .u.LowPart = a.dwLowDateTime, .u.HighPart = a.dwHighDateTime };
+	// ^
+	// designated initializers not allowed in C++
+	// TODO: maybe rename this file to clock_mini.hpm?
+	ULARGE_INTEGER b;
+	b.u.LowPart = a.dwLowDateTime;
+	b.u.HighPart = a.dwHighDateTime;
 	// ^
 	// (b.QuadPart)100nanoseconds
 	// ^
