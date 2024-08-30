@@ -1,3 +1,9 @@
 *.o
 .makefile-mini/
 *.zip
+
+# visual studio
+.vs/
+x64/
+test/
+*.vcxproj.user

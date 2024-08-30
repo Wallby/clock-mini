@@ -1,6 +1,6 @@
 include makefile_mini.mk
 
-$(call mm_add_start_parameters_t,a)
+$(call mm_start_parameters_t,a)
 a.ignoredbinaries:=^test$(MM_EXECUTABLE_EXTENSION)$$
 $(call mm_start,a)
 
@@ -22,5 +22,5 @@ $(call mm_add_test_parameters_t,d)
 d.executables:=test
 $(call mm_add_test,test,d)
 
-$(call mm_stop_parameters_t,b)
-$(call mm_stop,b)
+$(call mm_stop_parameters_t,e)
+$(call mm_stop,e)
