@@ -9,8 +9,10 @@
 
 #if defined(_WIN32)
 #include <windows.h>
-#else
+#elif defined(__linux__) //< chromeos
 #include <sys/time.h>
+#else
+#error "os not supported"
 #endif
 
 #define CM_GET_SECONDS_FROM_MILLISECONDS(a) (a) / 1000.0
@@ -48,7 +50,7 @@ static double cm_get_nanoseconds()
 	// ^
 	// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
 	return b.QuadPart * 100ull;
-#else //< #elif defined(__linux__)
+#else //< #elif defined(__linux__) //< chromeos
 	struct timeval d;
 	gettimeofday(&d, NULL);
 	return (((unsigned long long)d.tv_sec) * 1000000ull + ((unsigned long long)d.tv_usec)) * 1000ull;
